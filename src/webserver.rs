@@ -56,3 +56,88 @@ pub async fn start_server() -> Result<(), Box<dyn std::error::Error>> {
 
     Ok(())
 }
+
+async fn handle_refresh_block_request() -> Result<impl warp::Reply, warp::Rejection> {
+    let _ = rpc_functions::load_data().await;
+    Ok(warp::reply::with_status("Refresh completed", warp::http::StatusCode::OK))
+}
+
+fn with_graph(
+    graph: Arc<Graph>,
+) -> impl Filter<Extract = (Arc<Graph>,), Error = std::convert::Infallible> + Clone {
+    warp::any().map(move || graph.clone())
+}
+
+async fn handle_block_request(
+    block_height: i64,
+    graph: Arc<Graph>,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    // Query Neo4j to get block data by height
+    let query = neo4rs::query("
+        MATCH (b:Block { height: $height })
+        RETURN b.hash AS hash, b.size AS size, b.time AS time
+    ")
+    .param("height", block_height);
+
+    let mut result = graph.execute(query).await.unwrap();
+
+    if let Some(row) = result.next().await.unwrap() {
+        let block_hash: String = row.get("hash").unwrap();
+        let block_size: i64 = row.get("size").unwrap();
+        let block_time: String = row.get("time").unwrap();
+
+        let block_data = BlockData {
+            height: block_height,
+            hash: block_hash,
+            size: block_size,
+            time: block_time,
+        };
+
+        // Return block data as JSON
+        Ok(warp::reply::json(&block_data))
+    } else {
+        Err(warp::reject::not_found())
+    }
+}
+
+
+async fn handle_transaction_request(
+    txid: String,
+    graph: Arc<Graph>,
+    origin: Option<String>,  // Capture the Origin header from the request
+) -> Result<impl warp::Reply, warp::Rejection> 
+
+{
+    println!("Transaction ID: {}", txid);
+    
+    let query = neo4rs::query(
+        "
+        MATCH (t:Transaction { txid: $txid })
+        RETURN t.txid AS txid, t.height AS height
+        "
+        ).param("txid", txid as String);
+
+    let mut result = graph.execute(query).await.unwrap();
+
+    if let Some(row) = result.next().await.unwrap() {
+
+        let transaction_id: String = row.get("txid").unwrap();
+        let transaction_height: i64 = row.get("height").unwrap();
+
+        let transaction_data = TransactionData {
+            txid: transaction_id,
+            height: transaction_height,
+        };
+
+        let allowed_origin = origin.unwrap_or_else(|| "*".to_string()); // Default to * if no Origin is provided
+
+        // Return transaction data as JSON with explicit CORS header
+        Ok(warp::reply::with_header(
+            warp::reply::json(&transaction_data),
+            "Access-Control-Allow-Origin",
+            HeaderValue::from_str(&allowed_origin).unwrap(),
+        ))
+    } else {
+        Err(warp::reject::not_found())
+    }
+}
