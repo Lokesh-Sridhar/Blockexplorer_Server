@@ -47,3 +47,31 @@ async fn get_rpc_data(function_name: &str, params: &[serde_json::Value]) -> Resu
     }
 }
 
+
+pub async fn load_data() -> Result<(), Box<dyn std::error::Error>> {
+
+    tokio::spawn(async {
+        let block_count_value = get_rpc_data("getblockcount", &[]).await.unwrap();
+        let block_count: u64 = block_count_value["result"].as_u64().unwrap();
+        println!("Block count: {}", block_count);
+
+        // Fetch the latest block
+        let best_block_hash_value = get_rpc_data("getbestblockhash", &[]).await.unwrap();
+        let best_block_hash_str = best_block_hash_value["result"].as_str().unwrap();
+        let block_json = get_rpc_data("getblock", &[best_block_hash_str.into()]).await.unwrap();
+
+        // Connect to the Neo4j database
+        let graph = graph_functions::get_graph().await.unwrap();
+
+        // Fetch block details from Bitcoin Core
+        let transaction_size = block_json["result"]["nTx"].as_i64().unwrap();
+        let time = block_json["result"]["time"].as_i64().unwrap();
+        load_block(transaction_size, block_count, best_block_hash_str, time, &graph).await.unwrap();
+
+        // Fetch transactions for the block
+        let tx_arr = block_json["result"]["tx"].as_array().unwrap();
+        load_transactions_for_block(tx_arr, block_count, &graph).await.unwrap();
+    });
+    
+    Ok(())
+}
