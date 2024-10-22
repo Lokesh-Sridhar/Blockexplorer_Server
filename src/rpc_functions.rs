@@ -75,3 +75,12 @@ pub async fn load_data() -> Result<(), Box<dyn std::error::Error>> {
     
     Ok(())
 }
+
+pub fn format_time(time: i64) -> String {
+    // Insert block node into Neo4j with properties like height, hash, size, and time
+    let time_str = chrono::NaiveDateTime::from_timestamp(time, 0)
+    .format("%Y-%m-%dT%H:%M:%S")
+    .to_string();
+
+    return time_str;
+}
