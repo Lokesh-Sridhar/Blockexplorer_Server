@@ -84,3 +84,31 @@ pub fn format_time(time: i64) -> String {
 
     return time_str;
 }
+
+pub async fn load_block(transaction_size: i64, block_count: u64, best_block_hash: &str, time:i64, graph: &Arc<Graph>)
+    -> Result<String, Box<dyn std::error::Error>> {
+    let time_str = format_time(time);
+    let block_query: Query = neo4rs::query(
+        "
+            MERGE (b:Block {
+            height: $height,
+            hash: $hash
+            })
+        ON CREATE SET b.size = $size, b.time = datetime($time)
+        RETURN b",
+    )
+    .param("height", block_count as i64)
+    .param("hash", best_block_hash)
+    .param("time", time_str)
+    .param("size", transaction_size);
+
+    let mut result = graph.execute(block_query).await?;
+
+    if result.next().await.is_err() {
+        println!("Error: No block node was returned.");
+    } else {
+        println!("Block node was successfully returned.");
+        add_block_relationship(block_count, &graph).await?;
+    }
+    Ok("test".to_string())
+}
