@@ -112,3 +112,35 @@ pub async fn load_block(transaction_size: i64, block_count: u64, best_block_hash
     }
     Ok("test".to_string())
 }
+
+
+pub async fn add_block_relationship(block_count: u64, graph: &Arc<Graph>)
+-> Result<(), Box<dyn std::error::Error>> {
+    let rel_query = neo4rs::query(
+        "
+            MATCH (current:Block { height: $current_height })
+            MATCH (previous:Block { height: $previous_height })
+            MERGE (current)-[:NEXT]->(previous)
+            RETURN previous, current",
+    )
+    .param("current_height", block_count as i64)
+    .param("previous_height", (block_count - 1) as i64);
+
+    match graph.execute(rel_query).await {
+        Ok(mut result) => {
+            if let Some(record) = result.next().await? {
+                let current: neo4rs::Node = record.get("current").unwrap();
+                let previous: neo4rs::Node = record.get("previous").unwrap();
+                println!(
+                    "Relationship created between {:?} and {:?}",
+                    previous, current
+                );
+            }
+        }
+        Err(e) => {
+            println!("Error while establishing relationship: {}", e);
+        }
+    }
+
+    Ok(())
+}
