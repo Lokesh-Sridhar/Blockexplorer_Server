@@ -144,3 +144,58 @@ pub async fn add_block_relationship(block_count: u64, graph: &Arc<Graph>)
 
     Ok(())
 }
+
+pub async fn load_transactions_for_block(tx_arr: &Vec<serde_json::Value>, block_count: u64, graph: &Arc<Graph>)
+-> Result<(), Box<dyn std::error::Error>> {
+    for tx in tx_arr {
+        let txid_str = tx; // Assuming this gives you the transaction ID
+
+        // Insert the transaction node with block height
+        let tx_query = neo4rs::query(
+            "
+        CREATE (t:Transaction { txid: $txid, height: $height })
+        RETURN t",
+        )
+        .param("txid", txid_str.as_str().unwrap())
+        .param("height", block_count as i64);
+
+        match graph.execute(tx_query).await {
+            Ok(mut result) => {
+                if let Some(record) = result.next().await? {
+                    let transaction_node: neo4rs::Node = record.get("t").unwrap();
+                    // println!("Transaction added: {:?}", transaction_node);
+
+                    // Merge the relationship with the block
+                    let merge_query = neo4rs::query(
+                        "
+                    MATCH (b:Block { height: $block_height })
+                    MATCH (t:Transaction { height: $t_height })
+                    MERGE (b)-[:tx]->(t)
+                     RETURN b, t",
+                    )
+                    .param("block_height", block_count as i64)
+                    .param("t_height", block_count as i64);
+
+                    if let Err(e) = graph.execute(merge_query).await {
+                        println!(
+                            "Error while linking transaction {} to block {}: {}",
+                            tx.to_string(),
+                            block_count,
+                            e
+                        );
+                    }
+    
+                } else {
+                    println!(
+                        "Transaction node for txid {} not returned.",
+                        tx.to_string()
+                    );
+                }
+            }
+            Err(e) => {
+                println!("Error while inserting transaction: {}", e);
+            }
+        }
+    }
+    Ok(())
+}
