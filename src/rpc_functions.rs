@@ -145,6 +145,7 @@ pub async fn add_block_relationship(block_count: u64, graph: &Arc<Graph>)
     Ok(())
 }
 
+
 pub async fn load_transactions_for_block(tx_arr: &Vec<serde_json::Value>, block_count: u64, graph: &Arc<Graph>)
 -> Result<(), Box<dyn std::error::Error>> {
     for tx in tx_arr {
